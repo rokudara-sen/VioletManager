@@ -1,0 +1,7 @@
+﻿services:
+  violetmanager.api:
+    image: violetmanager.api
+    build:
+      context: .
+      dockerfile: VioletManager.API/Dockerfile
+
