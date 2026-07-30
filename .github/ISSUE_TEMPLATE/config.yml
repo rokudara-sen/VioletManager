@@ -1,0 +1,8 @@
+# Set to false to force every issue through one of the forms below.
+blank_issues_enabled: true
+
+# Uncomment and point at real destinations to route questions away from the issue tracker.
+# contact_links:
+#   - name: Question or idea
+#     url: https://github.com/rokudara-sen/VioletManager/discussions
+#     about: Ask usage questions and float ideas in Discussions instead of opening an issue.

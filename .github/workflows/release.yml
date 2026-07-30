@@ -1,0 +1,254 @@
+name: Release
+
+# Triggered by a semver tag such as v1.4.0 or v1.4.0-rc.1.
+# Everything below runs against the exact commit the tag points at.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_VERSION: 10.0.x
+  CONFIGURATION: Release
+  SOLUTION: VioletManager.sln
+  API_PROJECT: VioletManager.API/VioletManager.API.csproj
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+  DOTNET_CLI_UI_LANGUAGE: en
+
+jobs:
+  verify:
+    name: Verify
+    # Same lint/test/build gate as every pull request, run on the tagged commit.
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  package:
+    name: Package (${{ matrix.target.name }})
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          # `portable` needs a .NET 10 runtime on the host; the RID targets are
+          # self-contained single files. Trim or extend this list as needed.
+          - name: portable
+            rid: ''
+            archive: zip
+          - name: linux-x64
+            rid: linux-x64
+            archive: tar.gz
+          - name: linux-arm64
+            rid: linux-arm64
+            archive: tar.gz
+          - name: win-x64
+            rid: win-x64
+            archive: zip
+    steps:
+      - name: Checkout tagged commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: ./.github/actions/setup-dotnet
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          solution: ${{ env.SOLUTION }}
+          # A runtime-specific restore happens as part of `dotnet publish`.
+          restore: 'false'
+
+      - name: Publish
+        env:
+          RID: ${{ matrix.target.rid }}
+          TARGET_NAME: ${{ matrix.target.name }}
+        run: |
+          set -euo pipefail
+
+          version="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "ASSET_STEM=VioletManager.API-${version}-${TARGET_NAME}" >> "$GITHUB_ENV"
+
+          args=(
+            "$API_PROJECT"
+            --configuration "$CONFIGURATION"
+            --output "artifacts/publish/${TARGET_NAME}"
+            -p:Version="$version"
+            -p:DebugType=none
+          )
+
+          if [ -n "$RID" ]; then
+            args+=(--runtime "$RID" --self-contained true -p:PublishSingleFile=true)
+          fi
+
+          dotnet publish "${args[@]}"
+
+      - name: Create archive
+        env:
+          ARCHIVE: ${{ matrix.target.archive }}
+          TARGET_NAME: ${{ matrix.target.name }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p dist
+          src="artifacts/publish/${TARGET_NAME}"
+          asset="dist/${ASSET_STEM}.${ARCHIVE}"
+
+          case "$ARCHIVE" in
+            tar.gz) tar --create --gzip --file "$asset" --directory "$src" . ;;
+            zip) (cd "$src" && zip --quiet --recurse-paths "${GITHUB_WORKSPACE}/${asset}" .) ;;
+            *) echo "::error::Unsupported archive format '$ARCHIVE'." && exit 1 ;;
+          esac
+
+          sha256sum "$asset"
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.target.name }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  container:
+    name: Publish container image
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - name: Checkout tagged commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Resolve image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          # `latest` is added automatically for stable semver tags only.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  release:
+    name: Publish GitHub Release
+    needs: [package, container]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: dist
+
+      - name: Create checksums
+        run: |
+          set -euo pipefail
+
+          # Written outside dist/ first so the file cannot checksum itself.
+          checksums="$(mktemp)"
+          (cd dist && find . -maxdepth 1 -type f -printf '%P\n' | sort | xargs sha256sum) > "$checksums"
+          mv "$checksums" dist/SHA256SUMS.txt
+          chmod 644 dist/SHA256SUMS.txt
+          cat dist/SHA256SUMS.txt
+
+      - name: Compose release notes
+        env:
+          IMAGE: ${{ needs.container.outputs.image }}
+          DIGEST: ${{ needs.container.outputs.digest }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          version="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="$GITHUB_REF_NAME" \
+            --jq '.body' > generated-notes.md || : > generated-notes.md
+
+          {
+            echo "## Container image"
+            echo
+            echo '```'
+            echo "docker pull ${IMAGE}:${version}"
+            echo "${IMAGE}@${DIGEST}"
+            echo '```'
+            echo
+            echo "## Verifying downloads"
+            echo
+            echo '```'
+            echo "sha256sum --check --ignore-missing SHA256SUMS.txt"
+            echo '```'
+            echo
+            cat generated-notes.md
+          } > release-notes.md
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Any tag containing a hyphen (v1.0.0-rc.1) is treated as a pre-release.
+          prerelease=()
+          if [[ "$VERSION" == *-* ]]; then
+            prerelease=(--prerelease)
+          fi
+
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "VioletManager $VERSION" \
+            --notes-file release-notes.md \
+            --verify-tag \
+            "${prerelease[@]}" \
+            dist/*

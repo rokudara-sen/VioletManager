@@ -1,0 +1,41 @@
+name: Setup .NET
+description: >
+  Installs the .NET SDK, restores the NuGet package cache and (optionally) restores the
+  solution. Shared by the CI, CD and release workflows so the toolchain stays identical.
+
+inputs:
+  dotnet-version:
+    description: Version selector passed to actions/setup-dotnet.
+    required: false
+    default: 10.0.x
+  solution:
+    description: Solution or project file to restore.
+    required: false
+    default: VioletManager.sln
+  restore:
+    description: Set to 'false' to skip `dotnet restore` (e.g. when a runtime-specific restore follows).
+    required: false
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Install .NET SDK (${{ inputs.dotnet-version }})
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+
+    - name: Restore NuGet cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.sln', '**/Directory.*.props') }}
+        restore-keys: |
+          nuget-${{ runner.os }}-
+
+    - name: Restore ${{ inputs.solution }}
+      if: inputs.restore == 'true'
+      shell: bash
+      env:
+        SOLUTION: ${{ inputs.solution }}
+      run: dotnet restore "$SOLUTION"

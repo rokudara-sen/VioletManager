@@ -1,0 +1,94 @@
+name: Bug report
+description: Something behaves incorrectly or throws.
+title: '[Bug]: '
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please fill in enough detail for someone else to reproduce the
+        problem from a clean checkout. If this is a security vulnerability, do **not** open a
+        public issue — report it privately instead.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What goes wrong, in one or two sentences.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Include the exact error message, HTTP status code or failing assertion.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Affected project
+      multiple: true
+      options:
+        - VioletManager.API
+        - VioletManager.Application
+        - VioletManager.Domain
+        - VioletManager.Infrastructure
+        - Tests
+        - Build / CI / CD
+        - Unsure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Where did you see this?
+      options:
+        - Local development
+        - Container (docker / compose)
+        - development environment
+        - production environment
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Release tag (e.g. v1.2.0), image digest, or commit SHA.
+      placeholder: v1.2.0 / 295750b
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, stack trace or failing test output
+      render: text
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: OS, .NET SDK version (`dotnet --version`), related issues, workarounds.

@@ -1,0 +1,108 @@
+name: CD
+
+# develop = integration/testing, master = production.
+# Every push runs the full CI suite first (reused from ci.yml) and only then deploys.
+on:
+  push:
+    branches:
+      - develop
+      - master
+
+permissions: {}
+
+concurrency:
+  # One CD run per branch. Deployments are queued, never cancelled mid-flight.
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate
+    # Lint + test + build the pushed commit and publish an immutable image to GHCR.
+    # `packages: write` is granted here because the called workflow's publish job needs it.
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/ci.yml
+    with:
+      publish-image: true
+
+  deploy-development:
+    name: Deploy to development
+    if: github.ref == 'refs/heads/develop'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    environment:
+      name: development
+      url: ${{ vars.ENVIRONMENT_URL }}
+    concurrency:
+      # Serialise deployments to this environment across branches/runs.
+      group: deploy-development
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Deploy
+        uses: ./.github/actions/deploy
+        with:
+          image: ${{ needs.validate.outputs.image }}@${{ needs.validate.outputs.digest }}
+          registry: ghcr.io
+          registry-username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          registry-password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+          ssh-host: ${{ secrets.DEPLOY_SSH_HOST }}
+          ssh-user: ${{ secrets.DEPLOY_SSH_USER }}
+          ssh-port: ${{ vars.DEPLOY_SSH_PORT || '22' }}
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          ssh-known-hosts: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          container-name: ${{ vars.CONTAINER_NAME || 'violetmanager-api-development' }}
+          host-port: ${{ vars.APP_PORT || '8080' }}
+          aspnetcore-environment: ${{ vars.ASPNETCORE_ENVIRONMENT || 'Development' }}
+          env-file: ${{ secrets.APP_ENV_FILE }}
+          health-check-url: ${{ vars.HEALTH_CHECK_URL }}
+
+  deploy-production:
+    name: Deploy to production
+    if: github.ref == 'refs/heads/master'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    environment:
+      # Protect this environment in repository settings (required reviewers,
+      # "master" as the only allowed deployment branch). Its secrets are then
+      # unreachable from any other job — pull requests can never read them.
+      name: production
+      url: ${{ vars.ENVIRONMENT_URL }}
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Deploy
+        uses: ./.github/actions/deploy
+        with:
+          image: ${{ needs.validate.outputs.image }}@${{ needs.validate.outputs.digest }}
+          registry: ghcr.io
+          registry-username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          registry-password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+          ssh-host: ${{ secrets.DEPLOY_SSH_HOST }}
+          ssh-user: ${{ secrets.DEPLOY_SSH_USER }}
+          ssh-port: ${{ vars.DEPLOY_SSH_PORT || '22' }}
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          ssh-known-hosts: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          container-name: ${{ vars.CONTAINER_NAME || 'violetmanager-api-production' }}
+          host-port: ${{ vars.APP_PORT || '8080' }}
+          aspnetcore-environment: ${{ vars.ASPNETCORE_ENVIRONMENT || 'Production' }}
+          env-file: ${{ secrets.APP_ENV_FILE }}
+          health-check-url: ${{ vars.HEALTH_CHECK_URL }}
