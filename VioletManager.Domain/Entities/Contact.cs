@@ -1,4 +1,6 @@
-﻿namespace VioletManager.Domain.Entities;
+﻿using VioletManager.Domain.ValueObjects;
+
+namespace VioletManager.Domain.Entities;
 
 public sealed class Contact
 {
@@ -10,29 +12,17 @@ public sealed class Contact
     public string? FirstName { get; private set; }
     public string? LastName { get; private set; }
 
-    public string? WorkEmail { get; private set; }
-    public string? WorkPhone { get; private set; }
-
-    public string? WorkAddress { get; private set; }
-    public string? WorkCity { get; private set; }
-    public string? WorkState { get; private set; }
-    public string? WorkCountry { get; private set; }
-    public string? WorkZipCode { get; private set; }
-
-    public string? PrivateEmail { get; private set; }
-    public string? PrivatePhone { get; private set; }
-
-    public string? PrivateAddress { get; private set; }
-    public string? PrivateCity { get; private set; }
-    public string? PrivateState { get; private set; }
-    public string? PrivateCountry { get; private set; }
-    public string? PrivateZipCode { get; private set; }
+    public ContactDetails? WorkDetails { get; private set; }
+    public ContactDetails? PrivateDetails { get; private set; }
 
     public string? CompanyName { get; private set; }
     public string? AdditionalNotes { get; private set; }
 
-    public IReadOnlyCollection<string> Categories => _categories.AsReadOnly();
-    public IReadOnlyCollection<string> Subcategories => _subcategories.AsReadOnly();
+    public IReadOnlyCollection<string> Categories =>
+        _categories.AsReadOnly();
+
+    public IReadOnlyCollection<string> Subcategories =>
+        _subcategories.AsReadOnly();
 
     private Contact(
         Guid id,
@@ -40,7 +30,11 @@ public sealed class Contact
         string? lastName)
     {
         if (id == Guid.Empty)
-            throw new ArgumentException("Contact ID cannot be empty.", nameof(id));
+        {
+            throw new ArgumentException(
+                "Contact ID cannot be empty.",
+                nameof(id));
+        }
 
         Id = id;
         SetName(firstName, lastName);
@@ -50,7 +44,10 @@ public sealed class Contact
         string? firstName,
         string? lastName)
     {
-        return new Contact(Guid.NewGuid(), firstName, lastName);
+        return new Contact(
+            Guid.NewGuid(),
+            firstName,
+            lastName);
     }
 
     public void SetName(
@@ -70,40 +67,24 @@ public sealed class Contact
         LastName = lastName;
     }
 
-    public void SetWorkDetails(
-        string? workEmail,
-        string? workPhone,
-        string? workAddress,
-        string? workCity,
-        string? workState,
-        string? workCountry,
-        string? workZipCode)
+    public void SetWorkDetails(ContactDetails? workDetails)
     {
-        WorkEmail = Normalize(workEmail);
-        WorkPhone = Normalize(workPhone);
-        WorkAddress = Normalize(workAddress);
-        WorkCity = Normalize(workCity);
-        WorkState = Normalize(workState);
-        WorkCountry = Normalize(workCountry);
-        WorkZipCode = Normalize(workZipCode);
+        WorkDetails = workDetails;
     }
 
-    public void SetPrivateDetails(
-        string? privateEmail,
-        string? privatePhone,
-        string? privateAddress,
-        string? privateCity,
-        string? privateState,
-        string? privateCountry,
-        string? privateZipCode)
+    public void ClearWorkDetails()
     {
-        PrivateEmail = Normalize(privateEmail);
-        PrivatePhone = Normalize(privatePhone);
-        PrivateAddress = Normalize(privateAddress);
-        PrivateCity = Normalize(privateCity);
-        PrivateState = Normalize(privateState);
-        PrivateCountry = Normalize(privateCountry);
-        PrivateZipCode = Normalize(privateZipCode);
+        WorkDetails = null;
+    }
+
+    public void SetPrivateDetails(ContactDetails? privateDetails)
+    {
+        PrivateDetails = privateDetails;
+    }
+
+    public void ClearPrivateDetails()
+    {
+        PrivateDetails = null;
     }
 
     public void SetCompanyName(string? companyName)
@@ -118,17 +99,27 @@ public sealed class Contact
 
     public void AddCategory(string category)
     {
-        category = NormalizeRequired(category, nameof(category));
+        category = NormalizeRequired(
+            category,
+            nameof(category));
 
-        if (_categories.Contains(category, StringComparer.OrdinalIgnoreCase))
+        var alreadyExists = _categories.Contains(
+            category,
+            StringComparer.OrdinalIgnoreCase);
+
+        if (alreadyExists)
+        {
             return;
+        }
 
         _categories.Add(category);
     }
 
     public void RemoveCategory(string category)
     {
-        category = NormalizeRequired(category, nameof(category));
+        category = NormalizeRequired(
+            category,
+            nameof(category));
 
         _categories.RemoveAll(existing =>
             string.Equals(
@@ -144,11 +135,15 @@ public sealed class Contact
 
     public void AddSubcategory(string subcategory)
     {
-        subcategory = NormalizeRequired(subcategory, nameof(subcategory));
+        subcategory = NormalizeRequired(
+            subcategory,
+            nameof(subcategory));
 
-        if (_subcategories.Contains(
-                subcategory,
-                StringComparer.OrdinalIgnoreCase))
+        var alreadyExists = _subcategories.Contains(
+            subcategory,
+            StringComparer.OrdinalIgnoreCase);
+
+        if (alreadyExists)
         {
             return;
         }
@@ -158,7 +153,9 @@ public sealed class Contact
 
     public void RemoveSubcategory(string subcategory)
     {
-        subcategory = NormalizeRequired(subcategory, nameof(subcategory));
+        subcategory = NormalizeRequired(
+            subcategory,
+            nameof(subcategory));
 
         _subcategories.RemoveAll(existing =>
             string.Equals(
@@ -180,7 +177,7 @@ public sealed class Contact
     }
 
     private static string NormalizeRequired(
-        string value,
+        string? value,
         string parameterName)
     {
         return Normalize(value)
@@ -189,7 +186,7 @@ public sealed class Contact
                 parameterName);
     }
 
-    // Required by EF Core.
+    // REQUIRED BY EF CORE
     private Contact()
     {
     }
