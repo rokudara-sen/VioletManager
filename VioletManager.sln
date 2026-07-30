@@ -22,6 +22,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VioletManager.Domain.UnitTe
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VioletManager.IntegrationTests", "VioletManager.IntegrationTests\VioletManager.IntegrationTests.csproj", "{2A8C5869-B81F-48AB-842D-24D1590BD94D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VioletManager.UI", "VioletManager.UI\VioletManager.UI.csproj", "{8BEA4408-6726-4249-9A7B-24AFBC954E0D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -56,5 +58,9 @@ Global
 		{2A8C5869-B81F-48AB-842D-24D1590BD94D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2A8C5869-B81F-48AB-842D-24D1590BD94D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2A8C5869-B81F-48AB-842D-24D1590BD94D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8BEA4408-6726-4249-9A7B-24AFBC954E0D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8BEA4408-6726-4249-9A7B-24AFBC954E0D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8BEA4408-6726-4249-9A7B-24AFBC954E0D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8BEA4408-6726-4249-9A7B-24AFBC954E0D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
