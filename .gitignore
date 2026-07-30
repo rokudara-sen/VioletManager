@@ -5,3 +5,11 @@ riderModule.iml
 /_ReSharper.Caches/
 
 .idea/
+
+# CI/CD output
+artifacts/
+dist/
+TestResults/
+*.trx
+*.coverage
+*.cobertura.xml
