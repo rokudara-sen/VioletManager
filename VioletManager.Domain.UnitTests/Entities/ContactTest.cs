@@ -1,5 +1,6 @@
 ﻿using JetBrains.Annotations;
 using VioletManager.Domain.Entities;
+using VioletManager.Domain.ValueObjects;
 
 namespace VioletManager.Domain.UnitTests.Entities;
 
@@ -135,111 +136,151 @@ public sealed class ContactTests
     }
 
     [TestMethod]
-    [Description("Verifies that work details are stored and normalized.")]
-    public void SetWorkDetails_WithValues_SetsAndNormalizesWorkDetails()
+    [Description("Verifies that work details can be assigned to a contact.")]
+    public void SetWorkDetails_WithContactDetails_SetsWorkDetails()
     {
         // ARRANGE
         var contact = Contact.Create("John", "Doe");
 
+        var address = PostalAddress.Create(
+            street: "Main Street 10",
+            city: "Vienna",
+            state: "Vienna",
+            country: "Austria",
+            zipCode: "1010");
+
+        var workDetails = ContactDetails.Create(
+            email: "john.doe@company.com",
+            phone: "+43 660 1234567",
+            address: address);
+
         // ACT
-        contact.SetWorkDetails(
-            "  john.doe@company.com  ",
-            "  +43 660 1234567  ",
-            "  Main Street 10  ",
-            "  Vienna  ",
-            "  Vienna  ",
-            "  Austria  ",
-            "  1010  ");
+        contact.SetWorkDetails(workDetails);
 
         // ASSERT
-        Assert.AreEqual("john.doe@company.com", contact.WorkEmail);
-        Assert.AreEqual("+43 660 1234567", contact.WorkPhone);
-        Assert.AreEqual("Main Street 10", contact.WorkAddress);
-        Assert.AreEqual("Vienna", contact.WorkCity);
-        Assert.AreEqual("Vienna", contact.WorkState);
-        Assert.AreEqual("Austria", contact.WorkCountry);
-        Assert.AreEqual("1010", contact.WorkZipCode);
+        Assert.AreSame(workDetails, contact.WorkDetails);
     }
 
     [TestMethod]
-    [Description("Verifies that blank work details are normalized to null.")]
-    public void SetWorkDetails_WithBlankValues_SetsPropertiesToNull()
+    [Description("Verifies that existing work details can be replaced.")]
+    public void SetWorkDetails_WithNewDetails_ReplacesExistingWorkDetails()
     {
         // ARRANGE
         var contact = Contact.Create("John", "Doe");
 
+        var originalDetails = ContactDetails.Create(
+            email: "old@company.com",
+            phone: "+43 660 1111111",
+            address: null);
+
+        var newDetails = ContactDetails.Create(
+            email: "new@company.com",
+            phone: "+43 660 2222222",
+            address: null);
+
+        contact.SetWorkDetails(originalDetails);
+
         // ACT
-        contact.SetWorkDetails(
-            "",
-            " ",
-            null,
-            "\t",
-            "",
-            "   ",
-            null);
+        contact.SetWorkDetails(newDetails);
 
         // ASSERT
-        Assert.IsNull(contact.WorkEmail);
-        Assert.IsNull(contact.WorkPhone);
-        Assert.IsNull(contact.WorkAddress);
-        Assert.IsNull(contact.WorkCity);
-        Assert.IsNull(contact.WorkState);
-        Assert.IsNull(contact.WorkCountry);
-        Assert.IsNull(contact.WorkZipCode);
+        Assert.AreSame(newDetails, contact.WorkDetails);
+        Assert.AreNotSame(originalDetails, contact.WorkDetails);
     }
 
     [TestMethod]
-    [Description("Verifies that private details are stored and normalized.")]
-    public void SetPrivateDetails_WithValues_SetsAndNormalizesPrivateDetails()
+    [Description("Verifies that existing work details can be cleared.")]
+    public void ClearWorkDetails_WithExistingDetails_SetsWorkDetailsToNull()
     {
         // ARRANGE
         var contact = Contact.Create("John", "Doe");
 
+        var workDetails = ContactDetails.Create(
+            email: "john.doe@company.com",
+            phone: "+43 660 1234567",
+            address: null);
+
+        contact.SetWorkDetails(workDetails);
+
         // ACT
-        contact.SetPrivateDetails(
-            "  john@example.com  ",
-            "  +43 699 1234567  ",
-            "  Example Street 20  ",
-            "  Graz  ",
-            "  Styria  ",
-            "  Austria  ",
-            "  8010  ");
+        contact.ClearWorkDetails();
 
         // ASSERT
-        Assert.AreEqual("john@example.com", contact.PrivateEmail);
-        Assert.AreEqual("+43 699 1234567", contact.PrivatePhone);
-        Assert.AreEqual("Example Street 20", contact.PrivateAddress);
-        Assert.AreEqual("Graz", contact.PrivateCity);
-        Assert.AreEqual("Styria", contact.PrivateState);
-        Assert.AreEqual("Austria", contact.PrivateCountry);
-        Assert.AreEqual("8010", contact.PrivateZipCode);
+        Assert.IsNull(contact.WorkDetails);
     }
 
     [TestMethod]
-    [Description("Verifies that blank private details are normalized to null.")]
-    public void SetPrivateDetails_WithBlankValues_SetsPropertiesToNull()
+    [Description("Verifies that private details can be assigned to a contact.")]
+    public void SetPrivateDetails_WithContactDetails_SetsPrivateDetails()
     {
         // ARRANGE
         var contact = Contact.Create("John", "Doe");
 
+        var address = PostalAddress.Create(
+            street: "Example Street 20",
+            city: "Graz",
+            state: "Styria",
+            country: "Austria",
+            zipCode: "8010");
+
+        var privateDetails = ContactDetails.Create(
+            email: "john@example.com",
+            phone: "+43 699 1234567",
+            address: address);
+
         // ACT
-        contact.SetPrivateDetails(
-            "",
-            " ",
-            null,
-            "\t",
-            "",
-            "   ",
-            null);
+        contact.SetPrivateDetails(privateDetails);
 
         // ASSERT
-        Assert.IsNull(contact.PrivateEmail);
-        Assert.IsNull(contact.PrivatePhone);
-        Assert.IsNull(contact.PrivateAddress);
-        Assert.IsNull(contact.PrivateCity);
-        Assert.IsNull(contact.PrivateState);
-        Assert.IsNull(contact.PrivateCountry);
-        Assert.IsNull(contact.PrivateZipCode);
+        Assert.AreSame(privateDetails, contact.PrivateDetails);
+    }
+
+    [TestMethod]
+    [Description("Verifies that existing private details can be replaced.")]
+    public void SetPrivateDetails_WithNewDetails_ReplacesExistingPrivateDetails()
+    {
+        // ARRANGE
+        var contact = Contact.Create("John", "Doe");
+
+        var originalDetails = ContactDetails.Create(
+            email: "old@example.com",
+            phone: "+43 699 1111111",
+            address: null);
+
+        var newDetails = ContactDetails.Create(
+            email: "new@example.com",
+            phone: "+43 699 2222222",
+            address: null);
+
+        contact.SetPrivateDetails(originalDetails);
+
+        // ACT
+        contact.SetPrivateDetails(newDetails);
+
+        // ASSERT
+        Assert.AreSame(newDetails, contact.PrivateDetails);
+        Assert.AreNotSame(originalDetails, contact.PrivateDetails);
+    }
+
+    [TestMethod]
+    [Description("Verifies that existing private details can be cleared.")]
+    public void ClearPrivateDetails_WithExistingDetails_SetsPrivateDetailsToNull()
+    {
+        // ARRANGE
+        var contact = Contact.Create("John", "Doe");
+
+        var privateDetails = ContactDetails.Create(
+            email: "john@example.com",
+            phone: "+43 699 1234567",
+            address: null);
+
+        contact.SetPrivateDetails(privateDetails);
+
+        // ACT
+        contact.ClearPrivateDetails();
+
+        // ASSERT
+        Assert.IsNull(contact.PrivateDetails);
     }
 
     [TestMethod]
