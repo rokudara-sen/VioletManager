@@ -1,0 +1,241 @@
+name: Deploy container
+description: >
+  Reference deployment: pulls the published image onto a remote Docker host over SSH and
+  restarts the service, then optionally runs an HTTP health check. When the environment has
+  no deployment target configured the action emits a warning and succeeds without deploying,
+  so a fresh repository does not fail on its first push. Replace the "Deploy over SSH" step
+  with your own target (Azure Web App, Kubernetes, Fly.io, ...) if you deploy differently.
+
+inputs:
+  image:
+    description: Fully qualified, immutable image reference (name@sha256:...).
+    required: true
+  registry:
+    description: Registry the remote host must authenticate against to pull the image.
+    required: false
+    default: ghcr.io
+  registry-username:
+    description: Registry username used on the remote host.
+    required: false
+    default: ''
+  registry-password:
+    description: Registry token/password used on the remote host.
+    required: false
+    default: ''
+  ssh-host:
+    description: Hostname or IP of the Docker host. Empty disables deployment.
+    required: false
+    default: ''
+  ssh-user:
+    description: SSH user on the Docker host.
+    required: false
+    default: ''
+  ssh-port:
+    description: SSH port on the Docker host.
+    required: false
+    default: '22'
+  ssh-key:
+    description: PEM-encoded SSH private key. Empty disables deployment.
+    required: false
+    default: ''
+  ssh-known-hosts:
+    description: >
+      Pinned `ssh-keyscan` output for the host. Strongly recommended; without it the host key
+      is accepted on first use and a warning is emitted.
+    required: false
+    default: ''
+  container-name:
+    description: Name of the container to (re)create on the host.
+    required: false
+    default: violetmanager-api
+  host-port:
+    description: Port on the host that is mapped to the container's port 8080.
+    required: false
+    default: '8080'
+  aspnetcore-environment:
+    description: Value for ASPNETCORE_ENVIRONMENT inside the container.
+    required: false
+    default: Production
+  env-file:
+    description: >
+      Optional KEY=VALUE lines written to a 0600 env file on the host and passed to the
+      container via --env-file. Use this for connection strings and other app secrets.
+    required: false
+    default: ''
+  health-check-url:
+    description: Optional URL polled after deployment. Empty skips the health check.
+    required: false
+    default: ''
+  health-check-attempts:
+    description: Number of health check attempts, one second apart.
+    required: false
+    default: '30'
+
+outputs:
+  status:
+    description: Either 'deployed' or 'skipped'.
+    value: ${{ steps.target.outputs.status }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check deployment target
+      id: target
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh-host }}
+        SSH_KEY: ${{ inputs.ssh-key }}
+        IMAGE: ${{ inputs.image }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "$IMAGE" ] || [[ "$IMAGE" != *"@sha256:"* ]]; then
+          echo "::error title=Missing image::Expected an immutable image reference (name@sha256:...), got '$IMAGE'."
+          exit 1
+        fi
+
+        if [ -z "$SSH_HOST" ] || [ -z "$SSH_KEY" ]; then
+          echo "status=skipped" >> "$GITHUB_OUTPUT"
+          echo "::warning title=Deployment skipped::No deployment target configured for this environment. Set the DEPLOY_SSH_HOST and DEPLOY_SSH_KEY environment secrets (see .github/CI_CD.md)."
+          exit 0
+        fi
+
+        echo "status=deployed" >> "$GITHUB_OUTPUT"
+
+    - name: Configure SSH
+      if: steps.target.outputs.status == 'deployed'
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh-host }}
+        SSH_PORT: ${{ inputs.ssh-port }}
+        SSH_KEY: ${{ inputs.ssh-key }}
+        SSH_KNOWN_HOSTS: ${{ inputs.ssh-known-hosts }}
+      run: |
+        set -euo pipefail
+
+        install -d -m 700 ~/.ssh
+        printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+
+        if [ -n "$SSH_KNOWN_HOSTS" ]; then
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+        else
+          echo "::warning title=Unpinned host key::DEPLOY_SSH_KNOWN_HOSTS is not set; trusting the host key on first use. Pin it with: ssh-keyscan -p $SSH_PORT $SSH_HOST"
+          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
+        fi
+        chmod 644 ~/.ssh/known_hosts
+
+    - name: Deploy over SSH
+      if: steps.target.outputs.status == 'deployed'
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh-host }}
+        SSH_USER: ${{ inputs.ssh-user }}
+        SSH_PORT: ${{ inputs.ssh-port }}
+        IMAGE: ${{ inputs.image }}
+        REGISTRY: ${{ inputs.registry }}
+        REGISTRY_USERNAME: ${{ inputs.registry-username }}
+        REGISTRY_PASSWORD: ${{ inputs.registry-password }}
+        CONTAINER_NAME: ${{ inputs.container-name }}
+        HOST_PORT: ${{ inputs.host-port }}
+        ASPNETCORE_ENVIRONMENT: ${{ inputs.aspnetcore-environment }}
+        ENV_FILE: ${{ inputs.env-file }}
+      run: |
+        set -euo pipefail
+
+        # Values are serialised with printf %q so multi-line secrets and spaces survive
+        # the trip through the remote shell.
+        {
+          printf 'IMAGE=%q\n' "$IMAGE"
+          printf 'REGISTRY=%q\n' "$REGISTRY"
+          printf 'REGISTRY_USERNAME=%q\n' "$REGISTRY_USERNAME"
+          printf 'REGISTRY_PASSWORD=%q\n' "$REGISTRY_PASSWORD"
+          printf 'CONTAINER_NAME=%q\n' "$CONTAINER_NAME"
+          printf 'HOST_PORT=%q\n' "$HOST_PORT"
+          printf 'ASPNETCORE_ENVIRONMENT=%q\n' "$ASPNETCORE_ENVIRONMENT"
+          printf 'ENV_FILE=%q\n' "$ENV_FILE"
+          cat <<'REMOTE_SCRIPT'
+        set -euo pipefail
+
+        if [ -n "$REGISTRY_PASSWORD" ]; then
+          printf '%s' "$REGISTRY_PASSWORD" \
+            | docker login "$REGISTRY" --username "$REGISTRY_USERNAME" --password-stdin
+        fi
+
+        docker pull "$IMAGE"
+
+        run_args=(
+          --detach
+          --name "$CONTAINER_NAME"
+          --restart unless-stopped
+          --publish "${HOST_PORT}:8080"
+          --env "ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT}"
+          --env "ASPNETCORE_HTTP_PORTS=8080"
+        )
+
+        if [ -n "$ENV_FILE" ]; then
+          env_dir="${HOME}/.violetmanager"
+          install -d -m 700 "$env_dir"
+          env_path="${env_dir}/${CONTAINER_NAME}.env"
+          printf '%s\n' "$ENV_FILE" > "$env_path"
+          chmod 600 "$env_path"
+          run_args+=(--env-file "$env_path")
+        fi
+
+        docker rm --force "$CONTAINER_NAME" >/dev/null 2>&1 || true
+        docker run "${run_args[@]}" "$IMAGE"
+
+        docker logout "$REGISTRY" >/dev/null 2>&1 || true
+        docker image prune --force --filter "until=168h" >/dev/null 2>&1 || true
+
+        docker ps --filter "name=^/${CONTAINER_NAME}$" --format '{{.Names}} {{.Status}} {{.Image}}'
+        REMOTE_SCRIPT
+        } | ssh \
+              -i ~/.ssh/deploy_key \
+              -p "$SSH_PORT" \
+              -o BatchMode=yes \
+              -o ConnectTimeout=15 \
+              "${SSH_USER}@${SSH_HOST}" \
+              'bash -s'
+
+    - name: Health check
+      if: steps.target.outputs.status == 'deployed' && inputs.health-check-url != ''
+      shell: bash
+      env:
+        URL: ${{ inputs.health-check-url }}
+        ATTEMPTS: ${{ inputs.health-check-attempts }}
+      run: |
+        set -uo pipefail
+
+        for attempt in $(seq 1 "$ATTEMPTS"); do
+          code="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 10 "$URL" || true)"
+          if [ "$code" = "200" ]; then
+            echo "Healthy after ${attempt} attempt(s): $URL -> $code"
+            exit 0
+          fi
+          echo "Attempt ${attempt}/${ATTEMPTS}: $URL -> ${code:-no response}"
+          sleep 1
+        done
+
+        echo "::error title=Health check failed::$URL did not return 200 within ${ATTEMPTS} attempts."
+        exit 1
+
+    - name: Summary
+      if: always()
+      shell: bash
+      env:
+        STATUS: ${{ steps.target.outputs.status }}
+        IMAGE: ${{ inputs.image }}
+        CONTAINER_NAME: ${{ inputs.container-name }}
+        URL: ${{ inputs.health-check-url }}
+      run: |
+        {
+          echo "### Deployment"
+          echo
+          echo "| Field | Value |"
+          echo "| --- | --- |"
+          echo "| Status | ${STATUS:-unknown} |"
+          echo "| Image | \`${IMAGE}\` |"
+          echo "| Container | \`${CONTAINER_NAME}\` |"
+          echo "| Health check | ${URL:-not configured} |"
+        } >> "$GITHUB_STEP_SUMMARY"

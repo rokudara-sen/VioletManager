@@ -1,0 +1,260 @@
+name: CI
+
+# Runs on every pull request into develop/master, and is reused by the CD and release
+# workflows via `workflow_call` so that a deployment is always gated by the exact same
+# lint/test/build steps that a pull request had to pass.
+on:
+  pull_request:
+    branches:
+      - develop
+      - master
+  workflow_call:
+    inputs:
+      publish-image:
+        description: Push the container image to GHCR instead of only validating that it builds.
+        type: boolean
+        required: false
+        default: false
+    outputs:
+      image:
+        description: Image name that was pushed (empty unless publish-image was true).
+        value: ${{ jobs.container-publish.outputs.image }}
+      digest:
+        description: Digest of the pushed image (empty unless publish-image was true).
+        value: ${{ jobs.container-publish.outputs.digest }}
+
+# No token scopes by default: every job opts in to the minimum it needs.
+# This workflow never declares an `environment:`, so it can never read the
+# development/production environment secrets — pull requests included.
+permissions: {}
+
+concurrency:
+  # Superseded pull request pushes are cancelled. Validation runs that gate a deployment
+  # (event_name == push, i.e. called from cd.yml / release.yml) are never cancelled.
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_VERSION: 10.0.x
+  CONFIGURATION: Release
+  SOLUTION: VioletManager.sln
+  API_PROJECT: VioletManager.API/VioletManager.API.csproj
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+  DOTNET_CLI_UI_LANGUAGE: en
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: ./.github/actions/setup-dotnet
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          solution: ${{ env.SOLUTION }}
+
+      - name: Verify formatting and code style
+        run: |
+          dotnet format "$SOLUTION" --verify-no-changes --no-restore \
+            || {
+              echo "::error title=Formatting::Run 'dotnet format $SOLUTION' locally and commit the result."
+              exit 1
+            }
+
+      - name: Report vulnerable NuGet packages (advisory)
+        continue-on-error: true
+        run: dotnet list "$SOLUTION" package --vulnerable --include-transitive
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: ./.github/actions/setup-dotnet
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          solution: ${{ env.SOLUTION }}
+
+      - name: Build
+        run: dotnet build "$SOLUTION" --configuration "$CONFIGURATION" --no-restore
+
+      - name: Test
+        run: |
+          dotnet test "$SOLUTION" \
+            --configuration "$CONFIGURATION" \
+            --no-build \
+            --logger trx \
+            --logger "console;verbosity=normal" \
+            --results-directory artifacts/test-results \
+            --collect "Code Coverage;Format=cobertura"
+
+      - name: Upload test results and coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: artifacts/test-results
+          if-no-files-found: warn
+          retention-days: 14
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: ./.github/actions/setup-dotnet
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          solution: ${{ env.SOLUTION }}
+
+      # Builds every project in the solution, including ones the API does not
+      # reference yet (Infrastructure) and the test projects.
+      - name: Build solution
+        run: dotnet build "$SOLUTION" --configuration "$CONFIGURATION" --no-restore
+
+      - name: Publish API
+        run: |
+          dotnet publish "$API_PROJECT" \
+            --configuration "$CONFIGURATION" \
+            --no-restore \
+            --output artifacts/publish/api
+
+      - name: Upload API publish output
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-publish
+          path: artifacts/publish/api
+          if-no-files-found: error
+          retention-days: 14
+
+  container-build:
+    name: Container image (validate)
+    # Pull request path: prove the Dockerfile still builds, but never touch a registry.
+    if: ${{ inputs.publish-image != true }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: violetmanager-api:ci-${{ github.sha }}
+
+  container-publish:
+    name: Container image (publish)
+    # Push path only: publish an immutable image that the deploy jobs reference by digest.
+    if: ${{ inputs.publish-image == true }}
+    needs: [lint, test, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve image name
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=ref,event=branch
+            type=sha,format=long
+
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Summary
+        run: |
+          {
+            echo "### Container image published"
+            echo
+            echo '```'
+            echo "${{ steps.image.outputs.name }}@${{ steps.push.outputs.digest }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  ci:
+    name: CI status
+    # Single job to use as the required status check in branch protection.
+    if: always()
+    needs: [lint, test, build, container-build, container-publish]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Fail if any job did not succeed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success | skipped) ;;
+              *)
+                echo "::error title=CI failed::A required job reported '$result'."
+                exit 1
+                ;;
+            esac
+          done
+          echo "All required jobs succeeded."

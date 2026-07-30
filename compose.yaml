@@ -3,5 +3,5 @@
     image: violetmanager.api
     build:
       context: .
-      dockerfile: VioletManager.API/Dockerfile
+      dockerfile: Dockerfile
 
