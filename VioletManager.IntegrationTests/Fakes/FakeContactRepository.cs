@@ -41,4 +41,14 @@ public sealed class FakeContactRepository : IContactRepository
             return Task.FromResult(removed > 0);
         }
     }
+
+    public Task<Contact?> GetAsync(Guid contactId, CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            var contact = _contacts.SingleOrDefault(candidate => candidate.Id == contactId);
+
+            return Task.FromResult(contact);
+        }
+    }
 }
