@@ -1,4 +1,6 @@
 using VioletManager.Application;
+using VioletManager.Application.Handlers;
+using VioletManager.Application.Handlers.Contacts;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -8,6 +10,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddControllers();
 
 builder.Services.AddScoped<CreateContactHandler>();
+builder.Services.AddScoped<DeleteContactHandler>();
 
 var app = builder.Build();
 
