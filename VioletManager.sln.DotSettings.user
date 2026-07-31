@@ -4,5 +4,4 @@
 	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=dcf6821f_002Dfdea_002D40e5_002Db9a4_002D823e02261cc8/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" IsActive="True" Name="All tests from Solution" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;&#xD;
   &lt;Solution /&gt;&#xD;
 &lt;/SessionState&gt;</s:String>
-	
-	</wpf:ResourceDictionary>
+</wpf:ResourceDictionary>
