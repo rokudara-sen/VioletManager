@@ -14,7 +14,7 @@ public sealed class ContactController : ControllerBase
     private readonly CreateContactHandler _createContactHandler;
     private readonly DeleteContactHandler _deleteContactHandler;
 
-    public ContactController(CreateContactHandler createContactHandler,  DeleteContactHandler deleteContactHandler)
+    public ContactController(CreateContactHandler createContactHandler, DeleteContactHandler deleteContactHandler)
     {
         _createContactHandler = createContactHandler;
         _deleteContactHandler = deleteContactHandler;

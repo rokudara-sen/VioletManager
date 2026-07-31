@@ -11,7 +11,7 @@ public sealed class DeleteContactHandler
     {
         _contactRepository = contactRepository;
     }
-    
+
     public async Task<bool> HandleAsync(
         DeleteContactCommand command,
         CancellationToken cancellationToken = default)
