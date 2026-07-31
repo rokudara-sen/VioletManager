@@ -1,7 +1,10 @@
-﻿using VioletManager.Domain.Entities;
+﻿using VioletManager.Application.Contacts.Commands;
+using VioletManager.Application.Contacts.Results;
+using VioletManager.Application.Interfaces;
+using VioletManager.Domain.Entities;
 using VioletManager.Domain.ValueObjects;
 
-namespace VioletManager.Application;
+namespace VioletManager.Application.Handlers.Contacts;
 
 public sealed class CreateContactHandler
 {
