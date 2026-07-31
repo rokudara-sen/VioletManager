@@ -6,4 +6,5 @@ public interface IContactRepository
 {
     public Task AddAsync(Contact contact, CancellationToken cancellationToken = default);
     public Task<bool> DeleteAsync(Guid contactId, CancellationToken cancellationToken = default);
+    public Task<Contact?> GetAsync(Guid contactId, CancellationToken cancellationToken = default);
 }
