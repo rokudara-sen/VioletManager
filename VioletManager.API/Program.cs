@@ -22,3 +22,6 @@ app.UseHttpsRedirection();
 app.MapControllers();
 
 app.Run();
+
+// Exposed so WebApplicationFactory<Program> can bootstrap the API in integration tests
+public partial class Program;
