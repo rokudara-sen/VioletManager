@@ -1,4 +1,4 @@
-﻿namespace VioletManager.Application;
+﻿namespace VioletManager.Application.Contacts.Commands;
 
 public sealed record CreateContactCommand(
     string? FirstName,
