@@ -12,7 +12,7 @@ public sealed class GetContactHandler
     {
         _contactRepository = contactRepository;
     }
-    
+
     public async Task<GetContactResult?> HandleAsync(
         GetContactCommand command,
         CancellationToken cancellationToken = default)
