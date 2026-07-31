@@ -5,7 +5,7 @@ using VioletManager.Domain.Entities;
 namespace VioletManager.Application.UnitTests.Fakes;
 
 /// <summary>
-/// In-memory <see cref="IContactRepository"/> that records what was added and deleted.
+/// In-memory <see cref="IContactRepository"/> that records what was added, deleted, and read.
 /// </summary>
 public sealed class FakeContactRepository : IContactRepository
 {
@@ -18,6 +18,10 @@ public sealed class FakeContactRepository : IContactRepository
     public int DeleteCallCount { get; private set; }
 
     public Guid? LastDeletedContactId { get; private set; }
+
+    public int GetCallCount { get; private set; }
+
+    public Guid? LastRequestedContactId { get; private set; }
 
     public CancellationToken LastCancellationToken { get; private set; }
 
@@ -52,5 +56,21 @@ public sealed class FakeContactRepository : IContactRepository
         var removed = _contacts.RemoveAll(contact => contact.Id == contactId);
 
         return Task.FromResult(removed > 0);
+    }
+
+    public Task<Contact?> GetAsync(Guid contactId, CancellationToken cancellationToken = default)
+    {
+        GetCallCount++;
+        LastRequestedContactId = contactId;
+        LastCancellationToken = cancellationToken;
+
+        if (ExceptionToThrow is not null)
+        {
+            return Task.FromException<Contact?>(ExceptionToThrow);
+        }
+
+        var contact = _contacts.SingleOrDefault(candidate => candidate.Id == contactId);
+
+        return Task.FromResult(contact);
     }
 }
