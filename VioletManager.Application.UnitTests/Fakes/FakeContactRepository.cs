@@ -1,10 +1,11 @@
 ﻿using VioletManager.Application;
+using VioletManager.Application.Interfaces;
 using VioletManager.Domain.Entities;
 
 namespace VioletManager.Application.UnitTests.Fakes;
 
 /// <summary>
-/// In-memory <see cref="IContactRepository"/> that records what was added.
+/// In-memory <see cref="IContactRepository"/> that records what was added and deleted.
 /// </summary>
 public sealed class FakeContactRepository : IContactRepository
 {
@@ -13,6 +14,10 @@ public sealed class FakeContactRepository : IContactRepository
     public IReadOnlyList<Contact> Contacts => _contacts;
 
     public int AddCallCount { get; private set; }
+
+    public int DeleteCallCount { get; private set; }
+
+    public Guid? LastDeletedContactId { get; private set; }
 
     public CancellationToken LastCancellationToken { get; private set; }
 
@@ -31,5 +36,21 @@ public sealed class FakeContactRepository : IContactRepository
         _contacts.Add(contact);
 
         return Task.CompletedTask;
+    }
+
+    public Task<bool> DeleteAsync(Guid contactId, CancellationToken cancellationToken = default)
+    {
+        DeleteCallCount++;
+        LastDeletedContactId = contactId;
+        LastCancellationToken = cancellationToken;
+
+        if (ExceptionToThrow is not null)
+        {
+            return Task.FromException<bool>(ExceptionToThrow);
+        }
+
+        var removed = _contacts.RemoveAll(contact => contact.Id == contactId);
+
+        return Task.FromResult(removed > 0);
     }
 }

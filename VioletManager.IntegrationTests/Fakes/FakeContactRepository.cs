@@ -1,4 +1,4 @@
-﻿using VioletManager.Application;
+﻿using VioletManager.Application.Interfaces;
 using VioletManager.Domain.Entities;
 
 namespace VioletManager.IntegrationTests.Fakes;
@@ -30,5 +30,15 @@ public sealed class FakeContactRepository : IContactRepository
         }
 
         return Task.CompletedTask;
+    }
+
+    public Task<bool> DeleteAsync(Guid contactId, CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            var removed = _contacts.RemoveAll(contact => contact.Id == contactId);
+
+            return Task.FromResult(removed > 0);
+        }
     }
 }
