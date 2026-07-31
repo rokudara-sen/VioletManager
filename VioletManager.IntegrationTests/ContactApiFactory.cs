@@ -2,7 +2,7 @@
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using VioletManager.Application;
+using VioletManager.Application.Interfaces;
 using VioletManager.IntegrationTests.Fakes;
 
 namespace VioletManager.IntegrationTests;

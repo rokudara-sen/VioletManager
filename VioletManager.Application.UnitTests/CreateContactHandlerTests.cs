@@ -1,4 +1,7 @@
 ﻿using JetBrains.Annotations;
+using VioletManager.Application.Contacts.Commands;
+using VioletManager.Application.Handlers;
+using VioletManager.Application.Handlers.Contacts;
 using VioletManager.Application.UnitTests.Fakes;
 
 namespace VioletManager.Application.UnitTests;
