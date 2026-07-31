@@ -11,6 +11,7 @@ builder.Services.AddControllers();
 
 builder.Services.AddScoped<CreateContactHandler>();
 builder.Services.AddScoped<DeleteContactHandler>();
+builder.Services.AddScoped<GetContactHandler>();
 
 var app = builder.Build();
 
